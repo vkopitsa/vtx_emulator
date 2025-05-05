@@ -1,0 +1,6 @@
+# This project uses only standard Python libraries
+# No external dependencies are required
+
+# If you're running the tests, you might want to include these optional testing tools:
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
