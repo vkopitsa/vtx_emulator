@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import io
 import sys
+import logging
 import main_port
 
 
@@ -16,15 +17,28 @@ class TestMainPortExtended(unittest.TestCase):
             "frequency": 5865,
             "power_levels": [0x00, 0x0E, 0x14, 0x1A],
         }
-        # Save original stdout
+        # Set up logging capture
+        self.log_capture = io.StringIO()
+        self.log_handler = logging.StreamHandler(self.log_capture)
+        self.log_handler.setLevel(logging.INFO)
+        
+        # Get the logger and add our handler
+        self.logger = logging.getLogger("VTXEmulator")
+        self.original_level = self.logger.level
+        self.logger.setLevel(logging.INFO)
+        self.logger.addHandler(self.log_handler)
+        
+        # Also keep stdout capture for any tests that might need it
         self.original_stdout = sys.stdout
-        # Redirect stdout to capture print statements
         self.stdout_capture = io.StringIO()
         sys.stdout = self.stdout_capture
 
     def tearDown(self):
         # Restore original stdout
         sys.stdout = self.original_stdout
+        # Remove our log handler and restore original level
+        self.logger.removeHandler(self.log_handler)
+        self.logger.setLevel(self.original_level)
 
     def test_crc8_with_various_inputs(self):
         # Test with different lengths of input - updated to match actual implementation
@@ -69,9 +83,9 @@ class TestMainPortExtended(unittest.TestCase):
         response = main_port.handle_set_power([0x82])  # 0x82 = 0b10000010
         self.assertEqual(main_port.vtx_state["power"], 2)  # Only lower 7 bits
 
-        # Check output
-        output = self.stdout_capture.getvalue()
-        self.assertIn("Setting power to 2", output)
+        # Check logger output instead of stdout
+        log_output = self.log_capture.getvalue()
+        self.assertIn("Setting power to 2", log_output)
 
     def test_handle_set_channel_with_invalid_values(self):
         # Test with various channel values
@@ -80,13 +94,13 @@ class TestMainPortExtended(unittest.TestCase):
             main_port.handle_set_channel([channel])
             self.assertEqual(main_port.vtx_state["channel"], channel)
 
-            # Check output
-            output = self.stdout_capture.getvalue()
-            self.assertIn(f"Setting channel to {channel}", output)
+            # Check logger output instead of stdout
+            log_output = self.log_capture.getvalue()
+            self.assertIn(f"Setting channel to {channel}", log_output)
 
             # Reset capture
-            self.stdout_capture = io.StringIO()
-            sys.stdout = self.stdout_capture
+            self.log_capture = io.StringIO()
+            self.log_handler.stream = self.log_capture
 
     def test_handle_set_frequency_with_boundary_values(self):
         # Test with min/max frequency values
@@ -101,13 +115,13 @@ class TestMainPortExtended(unittest.TestCase):
             response = main_port.handle_set_frequency([high, low])
             self.assertEqual(main_port.vtx_state["frequency"], expected)
 
-            # Check output
-            output = self.stdout_capture.getvalue()
-            self.assertIn(f"Setting frequency to {expected}", output)
+            # Check logger output instead of stdout
+            log_output = self.log_capture.getvalue()
+            self.assertIn(f"Setting frequency to {expected}", log_output)
 
             # Reset capture
-            self.stdout_capture = io.StringIO()
-            sys.stdout = self.stdout_capture
+            self.log_capture = io.StringIO()
+            self.log_handler.stream = self.log_capture
 
     def test_handle_set_mode_with_different_modes(self):
         # Test with different mode values
@@ -116,13 +130,13 @@ class TestMainPortExtended(unittest.TestCase):
             response = main_port.handle_set_mode([mode])
             self.assertEqual(main_port.vtx_state["mode"], mode)
 
-            # Check output
-            output = self.stdout_capture.getvalue()
-            self.assertIn(f"Setting mode to {mode}", output)
+            # Check logger output instead of stdout
+            log_output = self.log_capture.getvalue()
+            self.assertIn(f"Setting mode to {mode}", log_output)
 
             # Reset capture
-            self.stdout_capture = io.StringIO()
-            sys.stdout = self.stdout_capture
+            self.log_capture = io.StringIO()
+            self.log_handler.stream = self.log_capture
 
     @patch('socket.socket')
     def test_run_emulator_state_machine_transitions(self, mock_socket):
@@ -172,9 +186,9 @@ class TestMainPortExtended(unittest.TestCase):
         main_port.run_emulator()
 
         # Check that the exception was handled (if we get here, the test passes)
-        # We can also check the output to see if the error was logged
-        output = self.stdout_capture.getvalue()
-        self.assertIn("An unexpected error occurred", output)
+        # Check the logger output to see if the error was logged
+        log_output = self.log_capture.getvalue()
+        self.assertIn("An unexpected error occurred", log_output)
 
     @patch('socket.socket')
     @patch('time.sleep', return_value=None)
@@ -195,8 +209,8 @@ class TestMainPortExtended(unittest.TestCase):
             main_port.run_emulator()
 
             # Check that the max retries message was logged
-            output = self.stdout_capture.getvalue()
-            self.assertIn("Max retries reached", output)
+            log_output = self.log_capture.getvalue()
+            self.assertIn("Max retries reached", log_output)
         finally:
             # Restore original values
             main_port.MAX_RETRIES = original_max_retries
